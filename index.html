@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>位值積木計算機</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Tone.js 函式庫用於音效播放 -->
+    <script src="https://cdn.jsdelivr.net/npm/tone@14.7.58/build/Tone.js"></script>
+    <style>
+        /* Custom styles for block aesthetics and font */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        
+        /* --- 泰雅族圖騰風格背景修正 (已加深顏色和放大尺寸) --- */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f7f7; /* 基礎背景色 */
+            
+            /* Tayal 菱形圖騰風格 (使用 CSS repeating-linear-gradient 模擬織紋) */
+            /* 顏色改為更深的傳統色調，以增加可見度 */
+            background-image: 
+                /* 45度線 (菱形的一側) - 深紅色線條 (#8B0000: 深紅) */
+                repeating-linear-gradient(45deg, #8B0000 0, #8B0000 2px, transparent 2px, transparent 60px),
+                /* 135度線 (菱形的另一側) - 深灰色線條 (#333333: 深灰/黑) */
+                repeating-linear-gradient(135deg, #333333 0, #333333 2px, #f7f7f7 2px, #f7f7f7 60px);
+            background-size: 60px 60px; /* 增加圖案重複大小，使其更明顯 */
+            background-attachment: fixed; /* 讓圖騰在滾動時保持固定 */
+        }
+        
+        .place-value-container {
+            /* Adjusted size for 200x200 blocks */
+            min-height: 220px; 
+            border-top: 1px solid #ccc;
+            padding-top: 1rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px; /* Increased gap */
+            align-content: flex-start;
+            justify-content: center; /* Center blocks */
+            padding-bottom: 1rem;
+        }
+
+        /* Style for the internal 1x1 unit squares within the rod/flat blocks */
+        .block-unit {
+            background-color: inherit; /* Inherit color from parent */
+            border: 1px solid rgba(255, 255, 255, 0.4); /* Light grid lines */
+            box-sizing: border-box; 
+        }
+
+        /* 10x10 Flat (Hundred Block) - 200px x 200px */
+        .hundred-block {
+            width: 200px;
+            height: 200px;
+            background-color: #e57373; /* Red/Maroon */
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+            border: 1px solid #c62828;
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            grid-template-rows: repeat(10, 1fr);
+            padding: 1px;
+            box-sizing: content-box;
+        }
+
+        /* 1x10 Rod (Ten Block) - 20px x 200px */
+        .ten-block {
+            width: 20px;
+            height: 200px;
+            background-color: #64b5f6; /* Blue */
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+            border: 1px solid #1976d2;
+            display: grid;
+            grid-template-rows: repeat(10, 1fr);
+            padding: 1px;
+            box-sizing: content-box;
+        }
+
+        /* 1x1 Unit (Unit Block) - 20px x 20px */
+        .unit-block {
+            width: 20px;
+            height: 20px;
+            background-color: #81c784; /* Green */
+            box-shadow: 1px 1px 3px rgba(0,0,0,0.2);
+            border: 1px solid #388e3c;
+        }
+        
+        /* Style for the control buttons */
+        .control-button {
+            transition: all 0.1s;
+        }
+        .control-button:active {
+            transform: scale(0.95);
+        }
+
+        /* --- 翻頁數字顯示 (Rolling Digit Counter) 樣式 --- */
+
+        /* 容器：設定固定高度並隱藏溢出的內容 */
+        .flip-counter {
+            width: 36px;
+            height: 36px; /* 單個數字的高度 */
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden; 
+            vertical-align: middle;
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.1);
+        }
+
+        /* 數字內容容器：包含 0-9 所有數字，垂直排列，用於位移 */
+        .digit-container {
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94); /* 平滑滾動動畫 */
+            line-height: 36px; /* 確保數字在行內垂直居中 */
+        }
+
+        /* 個別數字樣式 */
+        .digit {
+            height: 36px; /* 必須與 .flip-counter height 相同 */
+            font-size: 24px;
+            font-weight: 800;
+            text-align: center;
+            color: #1f2937; /* 深灰色文字 */
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div id="app" class="max-w-4xl mx-auto bg-white shadow-xl rounded-xl p-6 md:p-8">
+
+        <!-- Header and Total Number Display -->
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800 mb-2">位值積木計算機</h1>
+            <p class="text-lg text-gray-600">依據下方增減按鈕後顯示的總數字</p>
+            <div id="totalDisplay" class="text-6xl md:text-7xl font-extrabold text-blue-600 mt-4 p-4 bg-blue-50 rounded-lg shadow-inner">
+                0
+            </div>
+        </header>
+
+        <!-- Place Value Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+            <!-- Hundreds Place (百位) -->
+            <div class="place-value-card">
+                <h2 class="text-xl font-semibold mb-3 text-center text-red-700">
+                    百位 (100) 
+                    <!-- 翻頁數字計數器結構 -->
+                    <span class="ml-2 inline-block flip-counter bg-red-100 border border-red-300 rounded-lg shadow-md">
+                        <span id="hundredsCountDigits" class="digit-container"></span>
+                    </span>
+                </h2>
+                <div id="hundredsContainer" class="place-value-container rounded-lg bg-red-50 border-red-300">
+                    <!-- Blocks will be rendered here -->
+                </div>
+                <div class="flex justify-center mt-4 space-x-4">
+                    <button onclick="updateCount('hundreds', 1)" class="control-button bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-full shadow-lg text-2xl">+</button>
+                    <button onclick="updateCount('hundreds', -1)" class="control-button bg-red-400 hover:bg-red-500 text-white font-bold py-2 px-4 rounded-full shadow-lg text-2xl">-</button>
+                </div>
+            </div>
+
+            <!-- Tens Place (十位) -->
+            <div class="place-value-card">
+                <h2 class="text-xl font-semibold mb-3 text-center text-blue-700">
+                    十位 (10)
+                    <!-- 翻頁數字計數器結構 -->
+                    <span class="ml-2 inline-block flip-counter bg-blue-100 border border-blue-300 rounded-lg shadow-md">
+                        <span id="tensCountDigits" class="digit-container"></span>
+                    </span>
+                </h2>
+                <div id="tensContainer" class="place-value-container rounded-lg bg-blue-50 border-blue-300">
+                    <!-- Blocks will be rendered here -->
+                </div>
+                <div class="flex justify-center mt-4 space-x-4">
+                    <button onclick="updateCount('tens', 1)" class="control-button bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-full shadow-lg text-2xl">+</button>
+                    <button onclick="updateCount('tens', -1)" class="control-button bg-blue-400 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded-full shadow-lg text-2xl">-</button>
+                </div>
+            </div>
+
+            <!-- Units Place (個位) -->
+            <div class="place-value-card">
+                <h2 class="text-xl font-semibold mb-3 text-center text-green-700">
+                    個位 (1)
+                    <!-- 翻頁數字計數器結構 -->
+                    <span class="ml-2 inline-block flip-counter bg-green-100 border border-green-300 rounded-lg shadow-md">
+                        <span id="unitsCountDigits" class="digit-container"></span>
+                    </span>
+                </h2>
+                <div id="unitsContainer" class="place-value-container rounded-lg bg-green-50 border-green-300">
+                    <!-- Blocks will be rendered here -->
+                </div>
+                <div class="flex justify-center mt-4 space-x-4">
+                    <button onclick="updateCount('units', 1)" class="control-button bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full shadow-lg text-2xl">+</button>
+                    <button onclick="updateCount('units', -1)" class="control-button bg-green-400 hover:bg-green-500 text-white font-bold py-2 px-4 rounded-full shadow-lg text-2xl">-</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // State management for the counts of each block type
+        let counts = {
+            units: 0,
+            tens: 0,
+            hundreds: 0
+        };
+
+        const totalDisplay = document.getElementById('totalDisplay');
+        const unitsContainer = document.getElementById('unitsContainer');
+        const tensContainer = document.getElementById('tensContainer');
+        const hundredsContainer = document.getElementById('hundredsContainer');
+        
+        // 獲取數字滾動容器的參考
+        const hundredsDigitContainer = document.getElementById('hundredsCountDigits');
+        const tensDigitContainer = document.getElementById('tensCountDigits');
+        const unitsDigitContainer = document.getElementById('unitsCountDigits');
+
+        // 單個數字的高度 (必須與 CSS .digit 保持一致)
+        const DIGIT_HEIGHT = 36;
+
+
+        // --- Tone.js 音效設定 ---
+        const clickSynth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: {
+                type: "triangle"
+            },
+            envelope: {
+                attack: 0.005,
+                decay: 0.1,  
+                sustain: 0,  
+                release: 0.05
+            }
+        }).toDestination();
+
+        let isContextStarted = false;
+
+        async function playClickSound() {
+            if (!isContextStarted) {
+                await Tone.start();
+                isContextStarted = true;
+            }
+            clickSynth.triggerAttackRelease("C5", "16n"); 
+        }
+        // --- Tone.js 音效設定結束 ---
+
+
+        /**
+         * Updates the total number display.
+         */
+        function updateTotalDisplay() {
+            const total = (counts.hundreds * 100) + (counts.tens * 10) + counts.units;
+            totalDisplay.textContent = total;
+        }
+
+        /**
+         * 生成 0-9 的數字元素，放入滾動容器中。
+         * @param {HTMLElement} container The digit container element.
+         */
+        function initializeCounterDigits(container) {
+            container.innerHTML = '';
+            // 只生成 0-9，因為這個計數器只顯示一位數字 (即該位值的積木數量)
+            for (let i = 0; i < 10; i++) {
+                const digitDiv = document.createElement('div');
+                digitDiv.className = 'digit';
+                digitDiv.textContent = i;
+                container.appendChild(digitDiv);
+            }
+        }
+
+        /**
+         * 通過 CSS 位移 (transform) 實現數字滾動效果。
+         * @param {HTMLElement} container The .digit-container element.
+         * @param {number} newCount The new number (0-9).
+         */
+        function rollDigit(container, newCount) {
+            // 由於我們的計數器只顯示一位數字，如果計數超過 9，則取模 (mod) 10 
+            const newDigit = newCount % 10; 
+            
+            // 計算 Y 軸的位移量：新的數字在第 newDigit 個位置，每個數字高度為 DIGIT_HEIGHT
+            // 0 在最上方 (0px), 1 在下方 (-36px), 2 在更下方 (-72px), 以此類推
+            const totalOffset = newDigit * DIGIT_HEIGHT;
+            
+            // 應用 CSS 位移
+            container.style.transform = `translateY(-${totalOffset}px)`;
+        }
+
+        /**
+         * 更新每個位值的計數顯示（帶有滾動效果）。
+         */
+        function updatePlaceValueCountDisplays() {
+            rollDigit(hundredsDigitContainer, counts.hundreds);
+            rollDigit(tensDigitContainer, counts.tens);
+            rollDigit(unitsDigitContainer, counts.units);
+        }
+
+
+        /**
+         * Renders the visual blocks in their respective containers.
+         */
+        function renderBlocks() {
+            // Helper function to create the block DOM element
+            const createBlock = (type) => {
+                const block = document.createElement('div');
+                block.className = `${type}-block rounded-sm transition-all duration-100 ease-out`;
+
+                let units = 1;
+
+                if (type === 'hundred') {
+                    units = 100;
+                } else if (type === 'ten') {
+                    units = 10;
+                }
+                
+                // For hundred and ten blocks, populate them with smaller 'block-unit' divs to show the grid
+                if (type === 'hundred' || type === 'ten') {
+                    for (let i = 0; i < units; i++) {
+                        const internalUnit = document.createElement('div');
+                        internalUnit.className = 'block-unit'; 
+                        block.appendChild(internalUnit);
+                    }
+                }
+
+                return block;
+            };
+
+            // 1. Render Hundreds Blocks
+            hundredsContainer.innerHTML = '';
+            for (let i = 0; i < counts.hundreds; i++) {
+                hundredsContainer.appendChild(createBlock('hundred'));
+            }
+
+            // 2. Render Tens Blocks
+            tensContainer.innerHTML = '';
+            for (let i = 0; i < counts.tens; i++) {
+                tensContainer.appendChild(createBlock('ten'));
+            }
+
+            // 3. Render Units Blocks
+            unitsContainer.innerHTML = '';
+            for (let i = 0; i < counts.units; i++) {
+                unitsContainer.appendChild(createBlock('unit'));
+            }
+        }
+
+        /**
+         * Handles the button click to update the count for a specific place value.
+         * @param {string} place The place value to update ('units', 'tens', or 'hundreds').
+         * @param {number} change The amount to change the count by (+1 or -1).
+         */
+        function updateCount(place, change) {
+            if (counts[place] + change >= 0) {
+                counts[place] += change;
+                playClickSound();
+            } else {
+                return; 
+            }
+
+            renderBlocks();
+            updateTotalDisplay();
+            updatePlaceValueCountDisplays(); // 更新帶有滾動效果的數字顯示
+        }
+
+        // Initial setup when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            // 1. 初始化數字容器，填充 0-9
+            initializeCounterDigits(hundredsDigitContainer);
+            initializeCounterDigits(tensDigitContainer);
+            initializeCounterDigits(unitsDigitContainer);
+
+            // 2. 初始渲染
+            renderBlocks();
+            updateTotalDisplay();
+            updatePlaceValueCountDisplays();
+        });
+    </script>
+</body>
+</html>
